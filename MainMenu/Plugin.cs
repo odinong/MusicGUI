@@ -13,20 +13,20 @@ namespace MusicPlayer
         private Dictionary<string, List<string>> playlists = new Dictionary<string, List<string>>();
         private AudioSource audioSource;
         private AudioReverbFilter reverbFilter;
-        private string folderPath = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Gorilla Tag\\BepInEx\\plugins\\Music GUI";
-        private string playlistsPath = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Gorilla Tag\\BepInEx\\plugins\\Music GUI\\playlists.txt";
+        private string folderPath = "Music GUI";
+        private string playlistsPath = "Music GUI\\playlists.txt";
 
         private float volume = 1.0f;
         private float speed = 1.0f;
         private float pitch = 1.0f;
         private float reverbLevel = 0.0f;
-        private float bassLevel = 1.0f;
         private bool showGUI = true;
         private bool loopAudio = false;
         private bool shuffle = false;
 
         private int filesPerPage = 6;
         private int currentPage = 0;
+        private int playlistPage = 0;
 
         private GUILayoutOption[] buttonLayoutOptions = { GUILayout.Height(30) };
         private GUILayoutOption[] sliderLayoutOptions = { GUILayout.Width(300) };
@@ -46,6 +46,8 @@ namespace MusicPlayer
         private string currentTab = "Music";
         private string newPlaylistName = "";
         private string selectedPlaylist = "";
+        private List<string> currentPlaylist = new List<string>();
+        private int currentPlaylistIndex = 0;
 
         void Start()
         {
@@ -54,6 +56,12 @@ namespace MusicPlayer
             ScanFolder();
             LoadPlaylists();
             reverbLevel = -10000f;
+
+            audioSource.loop = false;
+            audioSource.playOnAwake = false;
+            audioSource.volume = volume;
+            audioSource.pitch = pitch;
+            audioSource.clip = null;
         }
 
         void ScanFolder()
@@ -231,8 +239,12 @@ namespace MusicPlayer
             GUILayout.Space(10);
 
             GUILayout.Label("Reverb Level");
-            reverbLevel = GUILayout.HorizontalSlider(reverbLevel, -10000f, 0f, sliderLayoutOptions);
+            reverbLevel = GUILayout.HorizontalSlider(reverbLevel, -10000.0f, 1000.0f, sliderLayoutOptions);
             reverbFilter.reverbLevel = reverbLevel;
+
+            GUILayout.Space(10);
+
+            loopAudio = GUILayout.Toggle(loopAudio, "Loop Audio", toggleStyle);
 
             GUILayout.Space(10);
 
@@ -323,12 +335,17 @@ namespace MusicPlayer
                 if (GUILayout.Button(playlist.Key, buttonStyle, buttonLayoutOptions))
                 {
                     selectedPlaylist = playlist.Key;
+                    playlistPage = 0; // Reset to first page when a new playlist is selected
                 }
                 if (GUILayout.Button("Delete", buttonStyle, buttonLayoutOptions))
                 {
                     playlists.Remove(playlist.Key);
                     SavePlaylists();
                     selectedPlaylist = "";
+                }
+                if (GUILayout.Button("Play", buttonStyle, buttonLayoutOptions))
+                {
+                    PlayPlaylist(playlist.Key);
                 }
                 GUILayout.EndHorizontal();
             }
@@ -354,7 +371,10 @@ namespace MusicPlayer
                 GUILayout.Label("Playlist: " + selectedPlaylist);
 
                 var playlistFiles = playlists[selectedPlaylist];
-                for (int i = 0; i < playlistFiles.Count; i++)
+                int startIndex = playlistPage * filesPerPage;
+                int endIndex = Mathf.Min(startIndex + filesPerPage, playlistFiles.Count);
+
+                for (int i = startIndex; i < endIndex; i++)
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label(Path.GetFileName(playlistFiles[i]), labelStyle, buttonLayoutOptions);
@@ -365,6 +385,19 @@ namespace MusicPlayer
                     }
                     GUILayout.EndHorizontal();
                 }
+
+                GUILayout.BeginHorizontal(paginationLayoutOptions);
+                GUILayout.FlexibleSpace();
+                if (playlistPage > 0 && GUILayout.Button("Previous Page", buttonStyle, buttonLayoutOptions))
+                {
+                    playlistPage--;
+                }
+                if (endIndex < playlistFiles.Count && GUILayout.Button("Next Page", buttonStyle, buttonLayoutOptions))
+                {
+                    playlistPage++;
+                }
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
 
                 GUILayout.Space(10);
 
@@ -398,6 +431,33 @@ namespace MusicPlayer
                 audioSource.clip = clip;
                 audioSource.loop = loopAudio;
                 audioSource.Play();
+            }
+        }
+
+        void PlayPlaylist(string playlistName)
+        {
+            if (playlists.ContainsKey(playlistName))
+            {
+                currentPlaylist = playlists[playlistName];
+                currentPlaylistIndex = 0;
+
+                if (shuffle)
+                {
+                    currentPlaylist = currentPlaylist.OrderBy(x => Random.value).ToList();
+                }
+
+                PlayNextInPlaylist();
+            }
+        }
+
+        void PlayNextInPlaylist()
+        {
+            if (currentPlaylistIndex < currentPlaylist.Count)
+            {
+                string nextSong = currentPlaylist[currentPlaylistIndex];
+                currentPlaylistIndex++;
+                PlayAudio(nextSong);
+                Invoke("PlayNextInPlaylist", audioSource.clip.length + 1);
             }
         }
 
