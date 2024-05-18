@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEngine;
 using BepInEx;
 
@@ -9,9 +10,11 @@ namespace MusicPlayer
     public class Plugin : BaseUnityPlugin
     {
         private List<string> audioFiles = new List<string>();
+        private Dictionary<string, List<string>> playlists = new Dictionary<string, List<string>>();
         private AudioSource audioSource;
         private AudioReverbFilter reverbFilter;
         private string folderPath = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Gorilla Tag\\BepInEx\\plugins\\Music GUI";
+        private string playlistsPath = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Gorilla Tag\\BepInEx\\plugins\\Music GUI\\playlists.txt";
 
         private float volume = 1.0f;
         private float speed = 1.0f;
@@ -19,6 +22,8 @@ namespace MusicPlayer
         private float reverbLevel = 0.0f;
         private float bassLevel = 1.0f;
         private bool showGUI = true;
+        private bool loopAudio = false;
+        private bool shuffle = false;
 
         private int filesPerPage = 6;
         private int currentPage = 0;
@@ -38,35 +43,68 @@ namespace MusicPlayer
         private Color coll5;
         private Color col6;
 
+        private string currentTab = "Music";
+        private string newPlaylistName = "";
+        private string selectedPlaylist = "";
+
         void Start()
         {
             audioSource = gameObject.AddComponent<AudioSource>();
             reverbFilter = gameObject.AddComponent<AudioReverbFilter>();
             ScanFolder();
+            LoadPlaylists();
             reverbLevel = -10000f;
         }
 
         void ScanFolder()
         {
-            if (Directory.Exists(folderPath))
+            if (!Directory.Exists(folderPath))
             {
-                string[] files = Directory.GetFiles(folderPath);
-                foreach (string file in files)
+                Directory.CreateDirectory(folderPath);
+            }
+
+            string[] files = Directory.GetFiles(folderPath);
+            foreach (string file in files)
+            {
+                if (file.EndsWith(".wav") || file.EndsWith(".mp3") || file.EndsWith(".ogg"))
                 {
-                    if (file.EndsWith(".wav") || file.EndsWith(".mp3") || file.EndsWith(".ogg"))
+                    audioFiles.Add(file);
+                }
+            }
+        }
+
+        void LoadPlaylists()
+        {
+            if (File.Exists(playlistsPath))
+            {
+                string[] lines = File.ReadAllLines(playlistsPath);
+                foreach (string line in lines)
+                {
+                    string[] parts = line.Split('|');
+                    if (parts.Length == 2)
                     {
-                        audioFiles.Add(file);
+                        string playlistName = parts[0];
+                        List<string> playlistFiles = parts[1].Split(';').ToList();
+                        playlists[playlistName] = playlistFiles;
                     }
                 }
             }
-            else
+        }
+
+        void SavePlaylists()
+        {
+            List<string> lines = new List<string>();
+            foreach (var playlist in playlists)
             {
-                Debug.LogError("Folder not found: " + folderPath);
+                string line = playlist.Key + "|" + string.Join(";", playlist.Value);
+                lines.Add(line);
             }
+            File.WriteAllLines(playlistsPath, lines);
         }
 
         void OnGUI()
         {
+            // GUI Style Setup
             if (darkMode == false)
             {
                 col = Color.white;
@@ -75,9 +113,9 @@ namespace MusicPlayer
             }
             if (darkMode)
             {
-                coll4 = UnityEngine.Color.black;
-                coll5 = UnityEngine.Color.black;
-                col6 = UnityEngine.Color.black;
+                coll4 = Color.black;
+                coll5 = Color.black;
+                col6 = Color.black;
             }
             boxStyle = new GUIStyle(GUI.skin.box);
             boxStyle.normal.textColor = Color.white;
@@ -133,6 +171,8 @@ namespace MusicPlayer
             toggleStyle.padding = new RectOffset(4, 4, 4, 4);
             toggleStyle.fontSize = 12;
             toggleStyle.alignment = TextAnchor.MiddleCenter;
+
+            GUILayout.Label("Audio Player By Odin", GUILayout.Height(30));
             if (GUILayout.Button(showGUI ? "Hide GUI" : "Show GUI", buttonStyle, GUILayout.Height(30)))
             {
                 showGUI = !showGUI;
@@ -141,10 +181,6 @@ namespace MusicPlayer
             {
                 audioFiles.Clear();
                 ScanFolder();
-            }
-            if (GUILayout.Button("Test", buttonStyle))
-            {
-                audioFiles.Clear();
             }
             if (GUILayout.Button("Dark Mode: " + YesNo(darkMode), buttonStyle))
             {
@@ -156,31 +192,29 @@ namespace MusicPlayer
                 return;
             }
 
-            GUILayout.Label("Audio Player By Odin", GUILayout.Height(30));
             GUILayout.Space(10);
 
-            int startIndex = currentPage * filesPerPage;
-            int endIndex = Mathf.Min(startIndex + filesPerPage, audioFiles.Count);
-
-            for (int i = startIndex; i < endIndex; i++)
+            // Tab buttons
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Music", buttonStyle))
             {
-                if (GUILayout.Button(Path.GetFileName(audioFiles[i]), buttonStyle, buttonLayoutOptions))
-                {
-                    PlayAudio(audioFiles[i]);
-                }
+                currentTab = "Music";
             }
-            GUILayout.BeginHorizontal(paginationLayoutOptions);
-            GUILayout.FlexibleSpace();
-            if (currentPage > 0 && GUILayout.Button("Previous Page", buttonStyle, buttonLayoutOptions))
+            if (GUILayout.Button("Playlists", buttonStyle))
             {
-                currentPage--;
+                currentTab = "Playlists";
             }
-            if (endIndex < audioFiles.Count && GUILayout.Button("Next Page", buttonStyle, buttonLayoutOptions))
-            {
-                currentPage++;
-            }
-            GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
+
+            // Current tab content
+            if (currentTab == "Music")
+            {
+                DisplayMusicTab();
+            }
+            else if (currentTab == "Playlists")
+            {
+                DisplayPlaylistsTab();
+            }
 
             GUILayout.Label("Volume");
             volume = GUILayout.HorizontalSlider(volume, 0.0f, 1.0f, sliderLayoutOptions);
@@ -243,6 +277,114 @@ namespace MusicPlayer
             }
         }
 
+        void DisplayMusicTab()
+        {
+            int startIndex = currentPage * filesPerPage;
+            int endIndex = Mathf.Min(startIndex + filesPerPage, audioFiles.Count);
+
+            for (int i = startIndex; i < endIndex; i++)
+            {
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button(Path.GetFileName(audioFiles[i]), buttonStyle, buttonLayoutOptions))
+                {
+                    PlayAudio(audioFiles[i]);
+                }
+
+                if (!string.IsNullOrEmpty(selectedPlaylist))
+                {
+                    if (GUILayout.Button("Add to Playlist", buttonStyle, buttonLayoutOptions))
+                    {
+                        AddToPlaylist(selectedPlaylist, audioFiles[i]);
+                    }
+                }
+                GUILayout.EndHorizontal();
+            }
+            GUILayout.BeginHorizontal(paginationLayoutOptions);
+            GUILayout.FlexibleSpace();
+            if (currentPage > 0 && GUILayout.Button("Previous Page", buttonStyle, buttonLayoutOptions))
+            {
+                currentPage--;
+            }
+            if (endIndex < audioFiles.Count && GUILayout.Button("Next Page", buttonStyle, buttonLayoutOptions))
+            {
+                currentPage++;
+            }
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+        }
+
+        void DisplayPlaylistsTab()
+        {
+            GUILayout.Label("Playlists");
+
+            foreach (var playlist in playlists)
+            {
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button(playlist.Key, buttonStyle, buttonLayoutOptions))
+                {
+                    selectedPlaylist = playlist.Key;
+                }
+                if (GUILayout.Button("Delete", buttonStyle, buttonLayoutOptions))
+                {
+                    playlists.Remove(playlist.Key);
+                    SavePlaylists();
+                    selectedPlaylist = "";
+                }
+                GUILayout.EndHorizontal();
+            }
+
+            GUILayout.Space(10);
+
+            GUILayout.Label("Create New Playlist");
+            newPlaylistName = GUILayout.TextField(newPlaylistName, 25);
+            if (GUILayout.Button("Create Playlist", buttonStyle))
+            {
+                if (!string.IsNullOrEmpty(newPlaylistName) && !playlists.ContainsKey(newPlaylistName))
+                {
+                    playlists[newPlaylistName] = new List<string>();
+                    SavePlaylists();
+                    newPlaylistName = "";
+                }
+            }
+
+            GUILayout.Space(10);
+
+            if (!string.IsNullOrEmpty(selectedPlaylist))
+            {
+                GUILayout.Label("Playlist: " + selectedPlaylist);
+
+                var playlistFiles = playlists[selectedPlaylist];
+                for (int i = 0; i < playlistFiles.Count; i++)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label(Path.GetFileName(playlistFiles[i]), labelStyle, buttonLayoutOptions);
+                    if (GUILayout.Button("Remove", buttonStyle, buttonLayoutOptions))
+                    {
+                        playlistFiles.RemoveAt(i);
+                        SavePlaylists();
+                    }
+                    GUILayout.EndHorizontal();
+                }
+
+                GUILayout.Space(10);
+
+                if (GUILayout.Button("Shuffle", buttonStyle))
+                {
+                    shuffle = !shuffle;
+                }
+                GUILayout.Label("Shuffle: " + YesNo(shuffle));
+            }
+        }
+
+        void AddToPlaylist(string playlistName, string filePath)
+        {
+            if (playlists.ContainsKey(playlistName))
+            {
+                playlists[playlistName].Add(filePath);
+                SavePlaylists();
+            }
+        }
+
         void PlayAudio(string path)
         {
             if (audioSource.isPlaying)
@@ -254,6 +396,7 @@ namespace MusicPlayer
             if (clip != null)
             {
                 audioSource.clip = clip;
+                audioSource.loop = loopAudio;
                 audioSource.Play();
             }
         }
@@ -276,9 +419,7 @@ namespace MusicPlayer
 
             using (WWW www = new WWW("file://" + path))
             {
-                while (!www.isDone)
-                {
-                }
+                while (!www.isDone) { }
 
                 if (www.error == null)
                 {
@@ -291,6 +432,7 @@ namespace MusicPlayer
                 }
             }
         }
+
         private static Texture2D MakeTex(int width, int height, Color col)
         {
             Color[] array = new Color[width * height];
@@ -303,21 +445,10 @@ namespace MusicPlayer
             texture2D.Apply();
             return texture2D;
         }
+
         private static string YesNo(bool input)
         {
-            bool flag = !input;
-            string result;
-            if (flag)
-            {
-                result = "Off";
-            }
-            else
-            {
-                result = "On";
-            }
-            return result;
+            return input ? "On" : "Off";
         }
-
-
     }
 }
