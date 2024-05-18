@@ -156,7 +156,7 @@ namespace MusicPlayer
                 return;
             }
 
-            GUILayout.Label("Audio Player By Xenaz", GUILayout.Height(30));
+            GUILayout.Label("Audio Player By Odin", GUILayout.Height(30));
             GUILayout.Space(10);
 
             int startIndex = currentPage * filesPerPage;
