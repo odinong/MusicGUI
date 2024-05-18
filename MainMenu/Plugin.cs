@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using UnityEngine;
 using BepInEx;
+using System.Reflection;
 
 namespace MusicPlayer
 {
@@ -13,8 +14,10 @@ namespace MusicPlayer
         private Dictionary<string, List<string>> playlists = new Dictionary<string, List<string>>();
         private AudioSource audioSource;
         private AudioReverbFilter reverbFilter;
-        private string folderPath = "Music GUI";
-        private string playlistsPath = "Music GUI\\playlists.txt";
+        static string assemblyDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+        static string folderPath = Path.Combine(assemblyDirectory, "Music GUI");
+        public string playlistsPath = Path.Combine(folderPath, "playlists.txt");
+
 
         private float volume = 1.0f;
         private float speed = 1.0f;
@@ -66,17 +69,15 @@ namespace MusicPlayer
 
         void ScanFolder()
         {
-            if (!Directory.Exists(folderPath))
+            if (Directory.Exists(folderPath))
             {
-                Directory.CreateDirectory(folderPath);
-            }
-
             string[] files = Directory.GetFiles(folderPath);
-            foreach (string file in files)
-            {
-                if (file.EndsWith(".wav") || file.EndsWith(".mp3") || file.EndsWith(".ogg"))
+                foreach (string file in files)
                 {
-                    audioFiles.Add(file);
+                    if (file.EndsWith(".wav") || file.EndsWith(".mp3") || file.EndsWith(".ogg"))
+                    {
+                        audioFiles.Add(file);
+                    }
                 }
             }
         }
