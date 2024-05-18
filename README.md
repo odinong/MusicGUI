@@ -15,6 +15,8 @@ by odin :)
 3. Place your audio files (MP3, WAV, OGG) in the Music GUI folder.
 
 Example:
+
+
 ![ExampleGIF](https://github.com/odinong/MusicGUI/blob/master/example.gif?raw=true)
 
 
