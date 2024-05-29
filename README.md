@@ -1,6 +1,7 @@
 # Music GUI
 by odin :)
-p.s i was banned from the discord after linking my number, #freeodin!
+JOIN MY DISCORD :) 
+https://discord.gg/5QUD38kWRa
 ## Features
 
 - Music Player for MP3, and WAV audio files,
